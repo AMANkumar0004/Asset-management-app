@@ -1,0 +1,6 @@
+{
+  "name": "AssetFlow",
+  "description": "Enterprise Asset & Resource Management System (ERP) to track physical assets, departments, allocations, resource bookings, maintenance and audits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
