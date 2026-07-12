@@ -33,7 +33,7 @@ import {
 } from './src/types.js';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'assetflow_jwt_secret_key_987123';
 
 app.use(express.json());
