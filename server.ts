@@ -1863,14 +1863,14 @@ async function startServer() {
     console.log(`Server running on port ${PORT}`);
   });
 
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ server, path: '/ws' });
 
   wss.on('connection', (ws) => {
     let authClient: AuthenticatedSocket | null = null;
 
-    ws.on('message', (message: string) => {
+    ws.on('message', (data: any) => {
       try {
-        const payload = JSON.parse(message);
+        const payload = JSON.parse(data.toString());
         if (payload.type === 'auth') {
           const { token } = payload;
           jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {

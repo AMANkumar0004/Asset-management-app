@@ -100,19 +100,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadCurrentUser();
   }, [loadCurrentUser]);
 
-  // Establish WebSocket connection for real-time push events and replace 10s polling
+  // Establish WebSocket connection for real-time push events and replace 10s polling with a robust WS + Fallback mechanism
   useEffect(() => {
     if (!token) return;
 
     let socket: WebSocket | null = null;
     let reconnectTimeout: any = null;
+    let fallbackInterval: any = null;
+    let isUsingFallback = false;
     let isDisposed = false;
+
+    function startFallback() {
+      if (isUsingFallback || isDisposed) return;
+      isUsingFallback = true;
+      console.log('Real-time sync: Active fallback to HTTP polling launched.');
+      
+      // Poll every 8 seconds as backup
+      fallbackInterval = setInterval(() => {
+        refreshNotifications();
+        // Trigger other controllers to refetch via custom events
+        const invalidationEvents = [
+          'invalidate_dashboard',
+          'invalidate_assets',
+          'invalidate_allocations',
+          'invalidate_bookings',
+          'invalidate_maintenance',
+          'invalidate_audits'
+        ];
+        invalidationEvents.forEach(type => {
+          window.dispatchEvent(new CustomEvent('assetflow:ws_message', { detail: { type } }));
+        });
+      }, 8000);
+    }
+
+    function stopFallback() {
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+      isUsingFallback = false;
+    }
 
     function connect() {
       if (isDisposed) return;
       
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}`;
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
       console.log('Connecting to real-time sync server...', wsUrl);
       
       const ws = new WebSocket(wsUrl);
@@ -120,6 +153,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       ws.onopen = () => {
         console.log('Real-time sync connected!');
+        stopFallback();
         // Authenticate socket
         ws.send(JSON.stringify({ type: 'auth', token }));
       };
@@ -143,13 +177,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       ws.onclose = (event) => {
         console.log('Real-time sync closed. Reconnecting...', event.reason);
+        startFallback();
         if (!isDisposed) {
-          reconnectTimeout = setTimeout(connect, 3000); // Reconnect in 3s
+          reconnectTimeout = setTimeout(connect, 5000); // Reconnect in 5s
         }
       };
 
       ws.onerror = (err) => {
-        console.error('Real-time sync socket error:', err);
+        console.log('Real-time sync socket connection failed, using fallback polling.', err);
+        startFallback();
         ws.close();
       };
     }
@@ -158,6 +194,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       isDisposed = true;
+      stopFallback();
       if (socket) {
         socket.close();
       }
