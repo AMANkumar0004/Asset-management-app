@@ -49,6 +49,22 @@ export const MaintenanceScreen: React.FC = () => {
     loadMaintenanceData();
   }, []);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_maintenance') {
+        console.log('WS Trigger: Refreshing Maintenance...');
+        loadMaintenanceData();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, []);
+
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regAssetId || !regDesc) {

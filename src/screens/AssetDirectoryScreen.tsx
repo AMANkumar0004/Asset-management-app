@@ -101,6 +101,28 @@ export const AssetDirectoryScreen: React.FC = () => {
     loadAssetsList();
   }, [offset]);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_assets') {
+        console.log('WS Trigger: Refreshing Assets Directory...');
+        loadAssetsList();
+        // Recount detail dossier if open
+        if (selectedAssetId) {
+          api.getAsset(selectedAssetId).then((detail) => {
+            setAssetDetail(detail);
+          }).catch(console.error);
+        }
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, [selectedAssetId]);
+
   // Load individual detail
   const handleViewDetails = async (id: string) => {
     setSelectedAssetId(id);

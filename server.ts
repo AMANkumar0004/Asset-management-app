@@ -3,6 +3,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { createServer as createViteServer } from 'vite';
+import { WebSocketServer } from 'ws';
 import {
   readDb,
   writeDb,
@@ -36,6 +37,59 @@ const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'assetflow_jwt_secret_key_987123';
 
 app.use(express.json());
+
+// -------------------------------------------------------------
+// WEBSOCKET REAL-TIME ARCHITECTURE
+// -------------------------------------------------------------
+interface AuthenticatedSocket {
+  ws: any;
+  userId: string;
+  role: string;
+  departmentId: string | null;
+}
+
+const activeSockets = new Set<AuthenticatedSocket>();
+
+function broadcastWsEvent(event: { type: string; [key: string]: any }, roleFilter?: string[], userIdFilter?: string[]) {
+  activeSockets.forEach((client) => {
+    if (client.ws.readyState !== 1 /* WebSocket.OPEN */) {
+      activeSockets.delete(client);
+      return;
+    }
+    if (roleFilter && !roleFilter.includes(client.role)) {
+      return;
+    }
+    if (userIdFilter && !userIdFilter.includes(client.userId)) {
+      return;
+    }
+    try {
+      client.ws.send(JSON.stringify(event));
+    } catch (e) {
+      console.error('Failed to send WS message', e);
+    }
+  });
+}
+
+function onDatabaseMutation(options: { dashboard?: boolean; assets?: boolean; allocations?: boolean; bookings?: boolean; maintenance?: boolean; audits?: boolean }) {
+  if (options.dashboard) {
+    broadcastWsEvent({ type: 'invalidate_dashboard' });
+  }
+  if (options.assets) {
+    broadcastWsEvent({ type: 'invalidate_assets' });
+  }
+  if (options.allocations) {
+    broadcastWsEvent({ type: 'invalidate_allocations' });
+  }
+  if (options.bookings) {
+    broadcastWsEvent({ type: 'invalidate_bookings' });
+  }
+  if (options.maintenance) {
+    broadcastWsEvent({ type: 'invalidate_maintenance' });
+  }
+  if (options.audits) {
+    broadcastWsEvent({ type: 'invalidate_audits' });
+  }
+}
 
 // -------------------------------------------------------------
 // HELPER MIDDLEWARES
@@ -80,15 +134,20 @@ function logActivity(
   entityId: string,
   metadata: any = {}
 ) {
-  db.activityLogs.push({
-    id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+  const log = {
+    id: `act-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
     actorId,
     action,
     entityType,
     entityId,
     timestamp: new Date().toISOString(),
     metadata
-  });
+  };
+  db.activityLogs.push(log);
+  
+  // Real-time log invalidation for admins/managers
+  broadcastWsEvent({ type: 'invalidate_logs' }, ['Admin', 'AssetManager']);
+  return log;
 }
 
 // Notify helper
@@ -99,15 +158,20 @@ function notifyUser(
   message: string,
   relatedEntityId: string | null = null
 ) {
-  db.notifications.push({
-    id: `not-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+  const n = {
+    id: `not-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
     userId,
     type,
     message,
     relatedEntityId,
     isRead: false,
     createdAt: new Date().toISOString()
-  });
+  };
+  db.notifications.push(n);
+
+  // Real-time notification invalidation for this specific user
+  broadcastWsEvent({ type: 'invalidate_notifications', userId }, undefined, [userId]);
+  return n;
 }
 
 // -------------------------------------------------------------
@@ -738,6 +802,7 @@ app.post('/api/assets', authenticateToken, requireRole(['Admin', 'AssetManager']
     logActivity(db, req.user.id, 'Register Asset', 'Asset', createdAsset.id, { assetTag: tag, name });
   });
 
+  onDatabaseMutation({ dashboard: true, assets: true });
   res.status(201).json(createdAsset);
 });
 
@@ -798,6 +863,7 @@ app.put('/api/assets/:id', authenticateToken, requireRole(['Admin', 'AssetManage
     return res.status(404).json({ error: 'Asset not found' });
   }
 
+  onDatabaseMutation({ dashboard: true, assets: true });
   res.json(updatedAsset);
 });
 
@@ -906,6 +972,7 @@ app.post('/api/allocations', authenticateToken, requireRole(['Admin', 'AssetMana
     return res.status(errorResponse.status).json({ error: errorResponse.error, allocationId: errorResponse.allocationId, currentHolderName: errorResponse.currentHolderName });
   }
 
+  onDatabaseMutation({ dashboard: true, allocations: true, assets: true });
   res.status(201).json(newAlloc);
 });
 
@@ -973,6 +1040,7 @@ app.post('/api/allocations/:id/return', authenticateToken, requireRole(['Admin',
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, allocations: true, assets: true });
   res.json(returnedAlloc);
 });
 
@@ -1057,6 +1125,7 @@ app.post('/api/transfers', authenticateToken, async (req: any, res: any) => {
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, allocations: true });
   res.status(201).json(transfer);
 });
 
@@ -1143,6 +1212,7 @@ app.post('/api/transfers/:id/respond', authenticateToken, requireRole(['Admin', 
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, allocations: true, assets: true });
   res.json(finalTransfer);
 });
 
@@ -1223,6 +1293,7 @@ app.post('/api/bookings', authenticateToken, async (req: any, res: any) => {
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, bookings: true });
   res.status(201).json(newBooking);
 });
 
@@ -1264,6 +1335,7 @@ app.post('/api/bookings/:id/cancel', authenticateToken, async (req: any, res: an
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, bookings: true });
   res.json(successBooking);
 });
 
@@ -1338,6 +1410,7 @@ app.post('/api/maintenance', authenticateToken, async (req: any, res: any) => {
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, maintenance: true });
   res.status(201).json(maint);
 });
 
@@ -1429,6 +1502,7 @@ app.put('/api/maintenance/:id/status', authenticateToken, requireRole(['Admin', 
     return res.status(404).json({ error: 'Maintenance request not found' });
   }
 
+  onDatabaseMutation({ dashboard: true, maintenance: true, assets: true });
   res.json(updatedMaint);
 });
 
@@ -1482,6 +1556,7 @@ app.post('/api/audits', authenticateToken, requireRole(['Admin', 'AssetManager']
     logActivity(db, req.user.id, 'Create Audit Cycle', 'AuditCycle', createdAudit.id, { scopeValue });
   });
 
+  onDatabaseMutation({ audits: true });
   res.status(201).json(createdAudit);
 });
 
@@ -1612,6 +1687,7 @@ app.post('/api/audits/:id/findings', authenticateToken, async (req: any, res: an
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ audits: true });
   res.json(finding);
 });
 
@@ -1722,6 +1798,7 @@ app.post('/api/audits/:id/close', authenticateToken, requireRole(['Admin', 'Asse
     return res.status(errorResponse.status).json({ error: errorResponse.error });
   }
 
+  onDatabaseMutation({ dashboard: true, audits: true, assets: true });
   res.json({ audit: closedAudit, summary: discrepancySummary });
 });
 
@@ -1782,8 +1859,51 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+  });
+
+  const wss = new WebSocketServer({ server });
+
+  wss.on('connection', (ws) => {
+    let authClient: AuthenticatedSocket | null = null;
+
+    ws.on('message', (message: string) => {
+      try {
+        const payload = JSON.parse(message);
+        if (payload.type === 'auth') {
+          const { token } = payload;
+          jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+            if (err) {
+              ws.close(4000, 'Invalid token');
+              return;
+            }
+            authClient = {
+              ws,
+              userId: decoded.id,
+              role: decoded.role,
+              departmentId: decoded.departmentId
+            };
+            activeSockets.add(authClient);
+            ws.send(JSON.stringify({ type: 'auth_success' }));
+          });
+        }
+      } catch (err) {
+        console.error('Failed to parse WS message', err);
+      }
+    });
+
+    ws.on('close', () => {
+      if (authClient) {
+        activeSockets.delete(authClient);
+      }
+    });
+
+    ws.on('error', () => {
+      if (authClient) {
+        activeSockets.delete(authClient);
+      }
+    });
   });
 }
 

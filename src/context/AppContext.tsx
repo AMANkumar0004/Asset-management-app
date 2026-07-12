@@ -100,13 +100,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadCurrentUser();
   }, [loadCurrentUser]);
 
-  // Real-time Notification/KPI polling every 10 seconds to keep live dashboard fresh
+  // Establish WebSocket connection for real-time push events and replace 10s polling
   useEffect(() => {
     if (!token) return;
-    const interval = setInterval(() => {
-      refreshNotifications();
-    }, 10000);
-    return () => clearInterval(interval);
+
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+    let isDisposed = false;
+
+    function connect() {
+      if (isDisposed) return;
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      console.log('Connecting to real-time sync server...', wsUrl);
+      
+      const ws = new WebSocket(wsUrl);
+      socket = ws;
+
+      ws.onopen = () => {
+        console.log('Real-time sync connected!');
+        // Authenticate socket
+        ws.send(JSON.stringify({ type: 'auth', token }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('Received WebSocket push event:', message);
+
+          // Handle state-specific invalidations
+          if (message.type === 'invalidate_notifications') {
+            refreshNotifications();
+          }
+
+          // Broadly dispatch events to allow individual screen controllers to instantly refetch
+          window.dispatchEvent(new CustomEvent('assetflow:ws_message', { detail: message }));
+        } catch (e) {
+          console.error('Error handling WebSocket push event', e);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('Real-time sync closed. Reconnecting...', event.reason);
+        if (!isDisposed) {
+          reconnectTimeout = setTimeout(connect, 3000); // Reconnect in 3s
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('Real-time sync socket error:', err);
+        ws.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      isDisposed = true;
+      if (socket) {
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
   }, [token, refreshNotifications]);
 
   const login = async (credentials: any) => {

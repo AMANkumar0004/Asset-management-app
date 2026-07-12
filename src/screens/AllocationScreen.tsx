@@ -70,6 +70,22 @@ export const AllocationScreen: React.FC = () => {
     loadAllAllocationData();
   }, []);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_allocations') {
+        console.log('WS Trigger: Refreshing Allocations Data...');
+        loadAllAllocationData();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, []);
+
   // Conflict detection: Watch when asset selected to give feedback!
   useEffect(() => {
     if (!allocAssetId) {
@@ -226,7 +242,11 @@ export const AllocationScreen: React.FC = () => {
                   {allocations
                     .filter((a) => a.status === 'Active' || a.status === 'Overdue')
                     .map((alloc) => (
-                      <tr key={alloc.id} className="hover:bg-gray-50/50">
+                      <tr key={alloc.id} className={`transition-colors ${
+                        alloc.status === 'Overdue' 
+                          ? 'bg-red-50/50 hover:bg-red-55/70 border-l-2 border-red-500 font-medium' 
+                          : 'hover:bg-gray-50/50'
+                      }`}>
                         <td className="py-3.5 px-3">
                           <div>
                             <div className="font-bold text-gray-800">{alloc.assetName}</div>
@@ -235,10 +255,12 @@ export const AllocationScreen: React.FC = () => {
                         </td>
                         <td className="py-3.5 px-3 text-gray-900 font-semibold">{alloc.holderName}</td>
                         <td className="py-3.5 px-3 text-gray-500 font-mono text-xs">{new Date(alloc.allocatedAt).toLocaleDateString()}</td>
-                        <td className="py-3.5 px-3 text-gray-500 font-mono text-xs">{new Date(alloc.expectedReturnDate).toLocaleDateString()}</td>
+                        <td className={`py-3.5 px-3 font-mono text-xs ${alloc.status === 'Overdue' ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                          {new Date(alloc.expectedReturnDate).toLocaleDateString()}
+                        </td>
                         <td className="py-3.5 px-3">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider ${
-                            alloc.status === 'Overdue' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                            alloc.status === 'Overdue' ? 'bg-red-50 text-red-700 border-red-200 animate-pulse' : 'bg-blue-50 text-blue-700 border-blue-200'
                           }`}>
                             {alloc.status}
                           </span>

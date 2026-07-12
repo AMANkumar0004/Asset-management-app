@@ -57,6 +57,22 @@ export const BookingScreen: React.FC = () => {
     loadBookingData();
   }, []);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_bookings') {
+        console.log('WS Trigger: Refreshing Bookings...');
+        loadBookingData();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, []);
+
   // Monitor start/end inputs for real-time overlap feedback on client!
   useEffect(() => {
     if (!selectedResourceId || !bookStart || !bookEnd) {

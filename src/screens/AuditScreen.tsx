@@ -67,6 +67,22 @@ export const AuditScreen: React.FC = () => {
     loadAuditData();
   }, []);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_audits') {
+        console.log('WS Trigger: Refreshing Audits...');
+        loadAuditData();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, []);
+
   const handleLaunchCycle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scopeValue || !dateStart || !dateEnd) {

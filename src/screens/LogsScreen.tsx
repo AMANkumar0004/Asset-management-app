@@ -36,6 +36,22 @@ export const LogsScreen: React.FC = () => {
     }
   }, [user]);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_dashboard' && (user?.role === 'Admin' || user?.role === 'AssetManager')) {
+        console.log('WS Trigger: Refreshing System Activity Logs...');
+        loadLogs();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, [user]);
+
   if (user?.role !== 'Admin' && user?.role !== 'AssetManager') {
     return (
       <div className="bg-red-50 border border-red-200 p-6 rounded-2xl max-w-lg mx-auto text-center mt-12 shadow-sm">

@@ -22,6 +22,12 @@ export const Navigation: React.FC = () => {
   const { user, screen, setScreen, logout, notifications, unreadCount, markNotificationsAsRead } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifFilter, setNotifFilter] = useState<'all' | 'alert' | 'warning' | 'info'>('all');
+
+  const filteredNotifications = notifications.filter(n => {
+    if (notifFilter === 'all') return true;
+    return n.type === notifFilter;
+  });
 
   if (!user) return null;
 
@@ -114,20 +120,44 @@ export const Navigation: React.FC = () => {
                       </button>
                     </div>
 
+                    {/* Filter Tabs for Grouping by Type */}
+                    <div className="flex border-b border-gray-100 bg-gray-55/10 text-[11px] leading-none">
+                      {(['all', 'alert', 'warning', 'info'] as const).map((type) => {
+                        const count = type === 'all' 
+                          ? notifications.length 
+                          : notifications.filter(n => n.type === type).length;
+                        const label = type === 'all' ? 'All' : type === 'alert' ? 'Alerts' : type === 'warning' ? 'Warnings' : 'Info';
+                        const isActive = notifFilter === type;
+                        return (
+                          <button
+                            key={type}
+                            onClick={() => setNotifFilter(type)}
+                            className={`flex-1 py-3 font-bold text-center border-b-2 transition-all cursor-pointer ${
+                              isActive 
+                                ? 'border-blue-600 text-blue-600 bg-white' 
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {label} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <div className="max-h-[350px] overflow-y-auto divide-y divide-gray-100">
-                      {notifications.length === 0 ? (
+                      {filteredNotifications.length === 0 ? (
                         <div className="p-6 text-center text-gray-400 text-sm">
-                          No notifications yet
+                          No {notifFilter !== 'all' ? `${notifFilter} ` : ''}notifications yet
                         </div>
                       ) : (
-                        notifications.map((n) => (
+                        filteredNotifications.map((n) => (
                           <div 
                             key={n.id} 
                             className={`p-4 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/30 border-l-2 border-blue-600' : ''}`}
                           >
                             <div className="flex gap-2">
                               <span className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${
-                                n.type === 'alert' ? 'bg-red-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                                n.type === 'alert' ? 'bg-red-500 animate-pulse' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
                               }`} />
                               <div>
                                 <p className="text-gray-800 text-xs sm:text-sm leading-relaxed font-medium">{n.message}</p>

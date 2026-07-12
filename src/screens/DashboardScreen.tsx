@@ -64,6 +64,22 @@ export const DashboardScreen: React.FC = () => {
     fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    const handleWsMessage = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const message = customEvent.detail;
+      if (message.type === 'invalidate_dashboard') {
+        console.log('WS Trigger: Refreshing Dashboard Data...');
+        fetchDashboardData();
+      }
+    };
+
+    window.addEventListener('assetflow:ws_message', handleWsMessage);
+    return () => {
+      window.removeEventListener('assetflow:ws_message', handleWsMessage);
+    };
+  }, []);
+
   const handleQuickMaintenance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!maintAssetId || !maintDesc) {
@@ -106,7 +122,7 @@ export const DashboardScreen: React.FC = () => {
     { label: 'Active Bookings', value: kpis.activeBookings, color: 'text-indigo-600 bg-white border-gray-200' },
     { label: 'Under Maintenance', value: kpis.maintenance, color: 'text-orange-600 bg-white border-gray-200' },
     { label: 'Pending Transfers', value: kpis.pendingTransfers, color: 'text-amber-600 bg-white border-gray-200' },
-    { label: 'Overdue Items', value: kpis.overdueAllocations, color: kpis.overdueAllocations > 0 ? 'text-red-600 bg-red-50 border-red-100' : 'text-gray-400 bg-gray-50 border-gray-200' },
+    { label: 'Overdue Items', value: kpis.overdueAllocations, color: kpis.overdueAllocations > 0 ? 'text-red-650 bg-red-50 border-red-500 ring-1 ring-red-500 animate-pulse font-extrabold shadow-md' : 'text-gray-450 bg-gray-50 border-gray-200' },
   ];
 
   return (
